@@ -28,6 +28,33 @@
 # To restart ticktock container:
 #   docker start ticktock
 
+FROM debian:oldstable as builder
+
+ARG BUILD_DATE
+ARG GIT_COMMIT
+ARG VERSION
+
+LABEL name="tt-build" version="$VERSION"
+LABEL build-date="$BUILD_DATE" git-commit="$GIT_COMMIT"
+LABEL maintainer="yongtao.you@gmail.com"
+LABEL url="https://github.com/ytyou/ticktock"
+LABEL description="The build environment for TickTockDB."
+LABEL docker.cmd="docker run -it --name tt-build -h tt-build -p 6180-6183:6180-6183 -p 6181:6181/udp ytyou/tt-build:latest"
+
+RUN apt-get update && apt-get install -y \
+  curl g++ git make zlib1g-dev
+
+# RUN cd /lib/x86_64-linux-gnu && \
+#   ln -s libz.so.1 libz.so
+
+RUN mkdir -p /home
+RUN cd /home && \
+  git clone https://github.com/ytyou/ticktock.git
+WORKDIR /home/ticktock
+RUN ln -s Makefile.ubuntu Makefile
+RUN make all
+
+
 FROM ubuntu
 
 ARG BUILD_DATE
@@ -59,8 +86,12 @@ RUN mkdir -p /var/lib/ticktock && \
 RUN mkdir -p /opt/ticktock && \
   chown ticktock:ticktock /opt/ticktock
 
-COPY limits.conf /etc/security/
-COPY --chown=ticktock:ticktock opt/ /opt/
+COPY docker/limits.conf /etc/security/
+
+COPY --chown=ticktock:ticktock --from=builder /home/ticktock/bin/tt /opt/ticktock/bin/ticktock
+COPY --chown=ticktock:ticktock conf/tt.docker.conf /opt/ticktock/conf/ticktock.conf
+COPY --chown=ticktock:ticktock admin/* /opt/ticktock/scripts/
+COPY --chown=ticktock:ticktock docker/entrypoint.sh /opt/ticktock/scripts/
 
 EXPOSE 6180/tcp
 EXPOSE 6181/tcp
